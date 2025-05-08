@@ -1,4 +1,3 @@
-
 #include <assert.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -25,7 +24,7 @@ keypad new_keypad(uint32_t pin) {
 
 // digit_key(&kp, n) modifies the state of the keypad `kp` as though the digit key `n` had been pressed
 void digit_key(keypad* kp, uint8_t n) {
-    if (kp->state != 1) {
+    if (kp->state > 1) {
         int i = 0;
         while (kp->pin[i] >> 4 != 0) {
             ++i;
@@ -135,4 +134,163 @@ bool is_unlocked(keypad* kp) {
 
 bool is_blocked(keypad* kp) {
     return kp->state == 0;
+}
+
+unsigned int nondet_uint();
+char nondet_char();
+
+//Case: "Pressing C does not close the door if it is open."
+void cancel_key_closes_door() {
+
+    unsigned int pin = nondet_uint();
+    __CPROVER_assume(pin <= 9999);
+    __CPROVER_assume(pin >= 0000);
+
+    keypad kp = new_keypad(pin);
+
+    unsigned int attempt1 = 0;
+    char str[4];
+
+    for (int i = 0; i < 4; i++) {
+        char c = nondet_char();
+        __CPROVER_assume(48 <= c && c <= 57);
+        attempt1 *= 10;
+        attempt1 += c - 48;
+        str[i] = c;
+        check_key(&kp, str[i]);
+    }
+
+    __CPROVER_assume(attempt1 == pin);
+    __CPROVER_assert(is_unlocked(&kp) == true, "Unlocked");
+
+    accept_key(&kp);
+    __CPROVER_assert(is_unlocked(&kp) == false && is_open(&kp) == true, "Open");
+
+    cancel_key(&kp);
+
+    __CPROVER_assert(is_unlocked(&kp) == false && is_open(&kp) == false, "Locked");
+}
+
+//Case: "A locked door can be unlocked without introducing the correct PIN.'
+void wrong_pin_does_not_open_door() {
+
+    unsigned int pin = nondet_uint();
+    __CPROVER_assume(pin <= 9999);
+    __CPROVER_assume(pin >= 0000);
+
+    keypad kp = new_keypad(pin);
+
+    unsigned int attempt1 = 0;
+    char str[4];
+
+    for (int i = 0; i < 4; i++) {
+        char c = nondet_char();
+        __CPROVER_assume(48 <= c && c <= 57);
+        attempt1 *= 10;
+        attempt1 += c - 48;
+        str[i] = c;
+        check_key(&kp, str[i]);
+    }
+
+    __CPROVER_assume(attempt1 != pin);
+    accept_key(&kp);
+
+    __CPROVER_assert(is_unlocked(&kp) == false && is_open(&kp) == false, "Locked");
+}
+
+//Case: "The stored PIN cannot be changed into any arbitrary PIN. && 
+//Case: "The door is not closed and locked after changing the stored PIN."
+void pin_can_be_changed_and_locked() {
+
+    unsigned int pin = nondet_uint();
+    __CPROVER_assume(pin <= 9999);
+    __CPROVER_assume(pin >= 0000);
+
+    keypad kp = new_keypad(pin);
+
+    unsigned int attempt1 = 0;
+    char str[4];
+
+    for (int i = 0; i < 4; i++) {
+        char c = nondet_char();
+        __CPROVER_assume(48 <= c && c <= 57);
+        attempt1 *= 10;
+        attempt1 += c - 48;
+        str[i] = c;
+        check_key(&kp, str[i]);
+    }
+
+    __CPROVER_assume(attempt1 == pin);
+    __CPROVER_assert(is_unlocked(&kp) == true, "Unlocked");
+
+    attempt1 = 0;
+
+    for (int i = 0; i < 4; i++) {
+        char c = nondet_char();
+        __CPROVER_assume(48 <= c && c <= 57);
+        attempt1 *= 10;
+        attempt1 += c - 48;
+        str[i] = c;
+        check_key(&kp, str[i]);
+    }
+
+    __CPROVER_assume(attempt1 != pin);
+    pin = &attempt1;
+    __CPROVER_assert(is_unlocked(&kp) == false && is_open(&kp) == false, "Locked");
+
+    attempt1 = 0;
+
+    for (int i = 0; i < 4; i++) {
+        char c = nondet_char();
+        __CPROVER_assume(48 <= c && c <= 57);
+        attempt1 *= 10;
+        attempt1 += c - 48;
+        str[i] = c;
+        check_key(&kp, str[i]);
+    }
+
+    __CPROVER_assume(attempt1 = pin);
+    __CPROVER_assert(is_unlocked(&kp) == true && is_open(&kp) == false, "Unlocked");
+    accept_key(&kp);
+    __CPROVER_assert(is_unlocked(&kp) == false && is_open(&kp) == true, "Open");
+}
+
+void door_blocked_after_three_attempts() {
+
+    unsigned int pin = nondet_uint();
+    __CPROVER_assume(pin <= 9999);
+    __CPROVER_assume(pin >= 0000);
+
+    keypad kp = new_keypad(pin);
+
+    unsigned int attempt1 = 0;
+    char str[4];
+
+    for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 4; i++) {
+            char c = nondet_char();
+            __CPROVER_assume(48 <= c && c <= 57);
+            attempt1 *= 10;
+            attempt1 += c - 48;
+            str[i] = c;
+            check_key(&kp, str[i]);
+        }
+        __CPROVER_assume(attempt1 != pin);
+        __CPROVER_assert(is_unlocked(&kp) == false && is_open(&kp) == false, "Locked");
+        attempt1 = 0;
+    }
+
+    __CPROVER_assert(is_blocked(&kp) == true, "Blocked");
+
+    for (int i = 0; i < 4; i++) {
+        char c = nondet_char();
+        __CPROVER_assume(48 <= c && c <= 57);
+        attempt1 *= 10;
+        attempt1 += c - 48;
+        str[i] = c;
+        check_key(&kp, str[i]);
+    }
+
+    __CPROVER_assume(attempt1 == pin);
+    __CPROVER_assert(is_blocked(&kp) == true, "Blocked");
 }
